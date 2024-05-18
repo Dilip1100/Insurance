@@ -5,6 +5,8 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+import os
 
 # Read the CSV data
 df = pd.read_csv('C:/Users/dilip/Downloads/insurance_claims.csv')
@@ -18,20 +20,18 @@ df["insured_sex"] = le.fit_transform(df["insured_sex"])
 df["policy_bind_date"] = pd.to_datetime(df["policy_bind_date"]).dt.year  # Extract year
 
 # Feature engineering (exploratory)
-# Consider creating new features based on domain knowledge
-# Examples (uncomment if desired):
-df['age_squared'] = df['age'] ** 2  # Example: Square of age for non-linearity
-df['premium_log'] = np.log(df['policy_annual_premium'] + 1)  # Example: Log transformation for skewed premiums (add 1 to avoid log(0))
+df['age_squared'] = df['age'] ** 2
+df['premium_log'] = np.log(df['policy_annual_premium'] + 1)
 
 # Separate features (X) and target variable (y)
-X = df[["age", "policy_annual_premium", "incident_type", "insured_sex", "policy_bind_date", "age_squared", "premium_log"]]  # Include new features if created
+X = df[["age", "policy_annual_premium", "incident_type", "insured_sex", "policy_bind_date", "age_squared", "premium_log"]]
 y = df["total_claim_amount"]
 
 # Split data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test, train_index, test_index = train_test_split(X, y, df.index, test_size=0.2, random_state=42)
 
 # Check for empty training data before scaling (optional)
-print("Training data shape:", X_train.shape)  # Check the shape of training data
+print("Training data shape:", X_train.shape)
 
 # Feature scaling (recommended for Random Forest)
 scaler = StandardScaler()
@@ -39,7 +39,7 @@ X_train = scaler.fit_transform(X_train)
 X_test = scaler.transform(X_test)
 
 # Create and train the Random Forest model
-model = RandomForestRegressor(n_estimators=100, random_state=42)  # Adjust n_estimators (number of trees) if needed
+model = RandomForestRegressor(n_estimators=100, random_state=42)
 model.fit(X_train, y_train)
 
 # Make predictions on the testing set
@@ -51,29 +51,50 @@ r2 = r2_score(y_test, y_pred)
 print("Mean Squared Error:", mse)
 print("R-squared:", r2)
 
-# Plot predicted vs. actual claim amounts (optional visualization)
-plt.scatter(y_test, y_pred)
-plt.xlabel("Actual Claim Amount")
-plt.ylabel("Predicted Claim Amount")
-plt.title("Random Forest Predictions vs. Actual Claims")
+# Get the policy bind dates for the test set
+test_years = df.loc[test_index, "policy_bind_date"]
+
+# Plot predicted vs. actual claim amounts as a horizontal bar chart with claim year on y-axis
+x = np.arange(len(test_years))
+width = 0.35  # Width of the bars
+
+fig, ax = plt.subplots()
+bars1 = ax.barh(x - width/2, y_test.reset_index(drop=True), width, label='Actual Claim Amount')
+bars2 = ax.barh(x + width/2, y_pred, width, label='Predicted Claim Amount')
+
+ax.set_ylabel('Claim Year')
+ax.set_xlabel('Claim Amount')
+ax.set_title('Random Forest Predictions vs. Actual Claims')
+ax.set_yticks(x)
+ax.set_yticklabels(test_years)
+ax.legend()
+
+# Reduce the density of y-axis labels
+ax.yaxis.set_major_locator(MaxNLocator(integer=True, nbins=10))  # Adjust nbins to control the number of labels
+
+fig.tight_layout()
+
+# Save the plot to the root directory
+plt.savefig('C:/Users/dilip/insurance_predictions_plot.png')
 plt.show()
 
 # Predict claim amounts for data until year 2020 (assuming your data covers years before 2020)
-# Filter data for years 2016-2020 (adjust based on your data range)
-df_predict = df[df["policy_bind_date"] >= 2016]  # Assuming data starts before 2016
+df_predict = df[df["policy_bind_date"] >= 2016]
 
 # Check for empty data before prediction (optional)
-print("Data for prediction shape:", df_predict.shape)  # Check the shape of filtered data
+print("Data for prediction shape:", df_predict.shape)
 
 if df_predict.shape[0] > 0:
-  X_predict = df_predict[["age", "policy_annual_premium", "incident_type", "insured_sex", "policy_bind_date", "age_squared", "premium_log"]]
-  X_predict = scaler.transform(X_predict)  # Apply scaling used for training
-  predictions = model.predict(X_predict)
+    X_predict = df_predict[["age", "policy_annual_premium", "incident_type", "insured_sex", "policy_bind_date", "age_squared", "premium_log"]]
+    X_predict = scaler.transform(X_predict)
+    predictions = model.predict(X_predict)
 
-  # Prepare prediction output as DataFrame
-  prediction_df = pd.DataFrame({"Policy Number": df_predict["policy_number"],  # Assuming a "policy_number" column exists
-                                 "Year": df_predict["policy_bind_date"],
-                                 "Predicted Claim Amount": predictions})
+    # Prepare prediction output as DataFrame
+    prediction_df = pd.DataFrame({
+        "Policy Number": df_predict["policy_number"],  # Assuming a "policy_number" column exists
+        "Year": df_predict["policy_bind_date"],
+        "Predicted Claim Amount": predictions
+    })
 
-  # Save predictions to CSV file
-  prediction_df.to_csv("insurance_predictions.csv", index=False)  
+    # Save predictions to CSV file in the root directory
+    prediction_df.to_csv('C:/Users/dilip/insurance_predictions.csv', index=False)
